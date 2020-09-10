@@ -4,22 +4,31 @@ import scipy
 import math
 import os
 import sys
+import argparse
 
 import matplotlib
 import pylab as plt
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
+#import torch.nn as nn
 from torch.autograd import Variable
 
 import face_alignment
 import vrn_unguided
 
+
+###############################################################################################
+##                   argument input
+###############################################################################################
+parser = argparse.ArgumentParser()
+parser.add_argument('-i', '--input', type=str, default='examples/star-3.jpg')
+parser.add_argument('-o', '--out_path', type=str, default='out/')
+args = parser.parse_args()
+
 ### initial 
 enable_cuda = True
 #
-FA = face_alignment.FaceAlignment(face_alignment.LandmarksType._2D, enable_cuda=False, flip_input=False)
+FA = face_alignment.FaceAlignment(face_alignment.LandmarksType._2D, flip_input=True)
 #
 VRN = vrn_unguided.vrn_unguided
 VRN.load_state_dict(torch.load('models/vrn_unguided.pth'))
@@ -27,15 +36,14 @@ if enable_cuda:
     VRN.cuda()
 
 ### get landmarks from test image
-image_file = 'examples/star-1.jpg'
+image_file = args.input
 image = cv.imread(image_file)
 try:
     image_height, image_width, image_depth = image.shape
 except:
     print('cannot load image:', image_file)
 #
-preds = FA.get_landmarks(image)
-print len(preds)
+preds = FA.get_landmarks_from_image(image)
 
 ### landmarks  vis
 canvas = image.copy()
@@ -56,6 +64,7 @@ for var in  preds[0]:
     cv.circle(canvas, (var[0], var[1]), 4, [128, 0, 255], thickness=-1)
 #
 plt.imshow(canvas[:,:,[2,1,0]])
+#plt.show()
 
 ### crop face image
 scale=90/math.sqrt((minX-maxX)*(minY-maxY))
@@ -91,18 +100,18 @@ if rw - x < crop_width/2:
 if rh - y < crop_height/2:
     bottom = crop_height/2 + y - rh
 #
-crop_image = cv.copyMakeBorder(resized_image,top, bottom, left, right,cv.BORDER_REFLECT)
-crop_image = crop_image[cy-crop_height/2:cy+crop_height/2, cx-crop_width/2:cx+crop_width/2, :]
+crop_image = cv.copyMakeBorder(resized_image,int(top), int(bottom), int(left), int(right),cv.BORDER_REFLECT)
+crop_image = crop_image[int(cy-crop_height/2):int(cy+crop_height/2), int(cx-crop_width/2):int(cx+crop_width/2), :]
 plt.imshow(crop_image[:,:,[2,1,0]])
-
-
+plt.show()
 
 ### vrn output
 inp = torch.from_numpy(crop_image.transpose((2, 0, 1))).float().unsqueeze_(0)
 if enable_cuda:
     inp = inp.cuda()
-out = VRN(Variable(inp, volatile=True))[-1].data.cpu()
-print(out.shape)
+with torch.no_grad():
+	out = VRN(Variable(inp))[-1].data.cpu()
+#print(out.shape)
 
 
 ### save to obj file
@@ -134,7 +143,9 @@ colour = vc[n,2:].reshape((vertices.shape[0],3)).astype(float) / 255
 
 vc = np.hstack((vertices, colour))
 
-obj_file = 'output.obj'
+if not os.path.exists(args.out_path):
+    os.makedirs(args.out_path)
+obj_file = args.out_path + os.path.basename(image_file)[:-4] + '.obj'
 with open(obj_file, 'w') as f:
     for v in range(0,vc.shape[0]):
         f.write('v %0.2f %0.2f %0.2f %0.2f %0.2f %0.2f\n' % (vc[v,0],vc[v,1],vc[v,2],vc[v,3],vc[v,4],vc[v,5]))
@@ -154,3 +165,4 @@ ax = fig.add_subplot(111, projection='3d')
 verts, faces = mcubes.marching_cubes(vol, 10)
 ax.plot_trisurf(verts[:, 0], verts[:, 1], faces, verts[:, 2],
                 cmap='Spectral', lw=1)
+#plt.show()

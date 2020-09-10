@@ -105,16 +105,16 @@ class HourGlass(nn.Module):
         self._generate_network(self.depth)
 
     def _generate_network(self, level):
-        self.add_module('b1_' + str(level), ConvBlock(256, 256))
+        self.add_module('b1_' + str(level), ConvBlock(self.features, self.features))
 
-        self.add_module('b2_' + str(level), ConvBlock(256, 256))
+        self.add_module('b2_' + str(level), ConvBlock(self.features, self.features))
 
         if level > 1:
             self._generate_network(level - 1)
         else:
-            self.add_module('b2_plus_' + str(level), ConvBlock(256, 256))
+            self.add_module('b2_plus_' + str(level), ConvBlock(self.features, self.features))
 
-        self.add_module('b3_' + str(level), ConvBlock(256, 256))
+        self.add_module('b3_' + str(level), ConvBlock(self.features, self.features))
 
     def _forward(self, level, inp):
         # Upper branch
@@ -122,7 +122,7 @@ class HourGlass(nn.Module):
         up1 = self._modules['b1_' + str(level)](up1)
 
         # Lower branch
-        low1 = F.max_pool2d(inp, 2, stride=2)
+        low1 = F.avg_pool2d(inp, 2, stride=2)
         low1 = self._modules['b2_' + str(level)](low1)
 
         if level > 1:
@@ -134,7 +134,7 @@ class HourGlass(nn.Module):
         low3 = low2
         low3 = self._modules['b3_' + str(level)](low3)
 
-        up2 = F.upsample(low3, scale_factor=2, mode='nearest')
+        up2 = F.interpolate(low3, scale_factor=2, mode='nearest')
 
         return up1 + up2
 
@@ -161,9 +161,9 @@ class FAN(nn.Module):
             self.add_module('top_m_' + str(hg_module), ConvBlock(256, 256))
             self.add_module('conv_last' + str(hg_module),
                             nn.Conv2d(256, 256, kernel_size=1, stride=1, padding=0))
+            self.add_module('bn_end' + str(hg_module), nn.BatchNorm2d(256))
             self.add_module('l' + str(hg_module), nn.Conv2d(256,
                                                             68, kernel_size=1, stride=1, padding=0))
-            self.add_module('bn_end' + str(hg_module), nn.BatchNorm2d(256))
 
             if hg_module < self.num_modules - 1:
                 self.add_module(
@@ -173,7 +173,7 @@ class FAN(nn.Module):
 
     def forward(self, x):
         x = F.relu(self.bn1(self.conv1(x)), True)
-        x = F.max_pool2d(self.conv2(x), 2)
+        x = F.avg_pool2d(self.conv2(x), 2, stride=2)
         x = self.conv3(x)
         x = self.conv4(x)
 

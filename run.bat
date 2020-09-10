@@ -1,0 +1,1 @@
+python -m demo.py -i examples/star-1.jpg -o out/
